@@ -1,0 +1,96 @@
+---
+title: Exploration of the NOAA Storm Database in order to assess negative impact of extreme weather events in human health and property.
+  storms
+author: "Denis Gontcharov"
+date: "March 11, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Synopsis
+The analysis below aims to identify the extreme weather events that cause the most damage in terms of health damage (fatalities and injuries) and in terms of material damage (property damage and crop damage). From the results it is concluded that on average:
+* **tornadoes, TSTM wind and hail** cause the most fatalities
+* **heat waves** cause the most injuries
+* **coastal erosion** causes the largest material damage
+
+# 2. Data processing
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+```
+
+
+Downloading the raw data using the provided URL.
+```{r, echo=TRUE, cache=TRUE}
+ temp <- tempfile()
+        download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",temp)
+        data <- read.csv(bzfile("repdata%2Fdata%2FStormData.csv.bz2"))
+        unlink(temp)
+```
+
+From the entire dataset we select only the variables that we need for the assignment i.e. EVTYPE, FATALITIES, INJURIES, PROPDMG and CROPDMG and store them in a new smaller dataset vars. The column names are renamed as well to make them clearer.
+```{r}
+vars <- data %>% select(event.type = EVTYPE, fatalities = FATALITIES, injuries = INJURIES, property.damage = PROPDMG, crop.damage = CROPDMG)
+head(vars)
+```
+
+We notice that the dataset does not answer to the "tidy data criterea" of Hadley Wickham. This is because in our selection the variables FATALITIES, INJURIES, PROPDMG and CROPDMG are in fact **all values of one categorical variable damage.category** Hence we will restructure the dataframe in order to obtain a tidy dataset with just three variables event.type, damage.category and damage.value (where value denoted the number corresponding to a DAMAGE.TYPE).
+
+```{r}
+tidy.data <- melt(vars, id=c('event.type'), measure.vars = c('fatalities', 'injuries', 'property.damage', 'crop.damage'), variable.name = "damage.category", value.name = "damage.value")
+```
+
+
+# 3. Results
+
+In order to get an idea of the damages caused across the four damage categories we first compute the average damage value per event type and per damage category.
+```{r}
+
+mean.damages <- tidy.data %>% group_by(event.type, damage.category) %>% summarize(mean.damage.value = mean(damage.value, na.rm = TRUE))
+head(mean.damages)
+```
+
+# 3.1 Which types of events are most harmful with respect to population health?
+
+We identify the events with the top 3 highest damage.value for fatalities and for injuries.
+```{r}
+top.fatalities.injuries <- mean.damages[mean.damages$damage.category == "fatalities" | mean.damages$damage.category == "injuries",] %>% group_by(damage.category) %>% top_n(n = 3, wt = mean.damage.value) %>% data.frame()
+```
+
+These events and their fatalities and/or injuries are shown in the barplot below.
+```{r}
+ggplot(data = top.fatalities.injuries, aes(event.type, mean.damage.value, fill = damage.category)) + 
+        geom_bar(stat = "identity", position = "dodge", col = "black") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        scale_fill_brewer(palette="Spectral") +
+        geom_text(aes(label = round(mean.damage.value)), position=position_dodge(width=0.9), vjust=-0.25) +
+        ylim(0,80) +
+        labs(x = "Type of extreme event", y = "Number of occurences", title = "Barplot of top 3 injuries and top 3 fatalities of extreme weather events in the USA", subtitle = " Note that 'tropical storm gordon' made it to the top five both in terms of fatalities as injuries.")
+```
+
+The barplot shows that the events that cause the most injuries are in descending order a **heat wave**, **tropical storm Gordon**, and **forest fires**. Similarly, the events that cause the most fatalities are in descending order **tornadoes, TSTM wind and hail**, **cold and snow** and **tropical storm Gordon**.
+
+# 3.2 Which types of events have the greatest economic conseauences?
+
+We'll select the events with the top 3 highest damage.value for property.damage and for crop.damage.
+```{r}
+top.property.crop <- mean.damages[mean.damages$damage.category == "property.damage" | mean.damages$damage.category == "crop.damage",] %>% group_by(damage.category) %>% top_n(n = 3, wt = mean.damage.value) %>% data.frame()
+```
+
+These events and their damage.value are shown in the stacked barplot below.
+```{r}
+ggplot(data = top.property.crop, aes(event.type, mean.damage.value, fill = damage.category)) + 
+        geom_bar(stat = "identity", col = "black") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        scale_fill_brewer(palette="set2") +
+        ylim(0,800) +
+        geom_text(aes(label = round(mean.damage.value)), position=position_dodge(width=0.9), vjust=-0.25) +
+        labs(x = "Type of extreme event", y = "Monetary value", title = "Barplot of top 3 crop.damage and top 3 property.damage of extreme weather events in the USA")
+```
+
+The barplot shows that the events that cause the highest property damage are in descending order **coastal erosion** and a tie between **heavy rain and flood** and **river and stream flood**. Finally, the events causing the largest crop damage is a tie between **dust storm and high winds**, **forest fires** and **tropical storm Gordon**.
